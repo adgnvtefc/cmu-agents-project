@@ -159,26 +159,29 @@ def a2(root, persona, skill, out):
     # "CC", Bob never does): rejected = the other user's action, chosen = this user's action.
     my_keys = {action_key(s) for d in demos(root, persona, skill) for s in load(d)[1]}
     pairs = []
+    # Other users' demos are matched by UI STATE only (previous action type + element), across all
+    # their task instances: a deployed system never has two users doing the identical task.
+    other_steps = [load(x)[1] for o in PERSONAS if o != persona for x in demos(root, o, skill)]
     for d in demos(root, persona, skill):
         meta, steps, shots = load(d)
         resp = [step_response(s, to_uitars) for s in steps]
-        for o in PERSONAS:
-            if o == persona:
-                continue
-            od = [x for x in demos(root, o, skill) if json.loads((x / "meta.json").read_text())["task_id"] == meta["task_id"]]
-            if not od:
-                continue
-            _, osteps, _ = load(od[0])
-            for k, s in enumerate(steps):
+        for k, s in enumerate(steps):
+            seen = set()
+            for osteps in other_steps:
                 for j in range(len(osteps)):
                     ok = action_key(osteps[j])
-                    if state_key(osteps, j) == state_key(steps, k) and ok != action_key(s) and ok not in my_keys:
+                    # typed text is instance-specific; compare typed actions by element + value only
+                    # when it is not this instance's entity text
+                    if (state_key(osteps, j) == state_key(steps, k) and ok != action_key(s)
+                            and ok not in my_keys and (ok[0], ok[1], ok[2] if ok[0] != "type" else None) not in seen):
+                        if ok[0] == "type" and ok[1] == action_key(s)[1] and len(ok[2] or "") > 40:
+                            continue  # long free text from another task (email bodies): not comparable
+                        seen.add((ok[0], ok[1], ok[2] if ok[0] != "type" else None))
                         msgs, imgs = build_messages(meta["instruction"], shots[: k + 1], resp[:k], N_IMAGES)
                         rej = step_response(osteps[j], to_uitars)
                         pairs.append({"images": imgs,
                                       "chosen": msgs + [{"role": "assistant", "content": [{"type": "text", "text": resp[k]}]}],
                                       "rejected": msgs + [{"role": "assistant", "content": [{"type": "text", "text": rej}]}]})
-                        break
     print(f"A2 {persona}/{skill}: {len(pairs)} preference pairs")
     return run_train(pairs, out, init=init, epochs=3, lr=1e-5,
                      extra=["--algorithm", "dpo", "--loss-type", "dpop", "--beta", "0.1", "--delta", "50"])

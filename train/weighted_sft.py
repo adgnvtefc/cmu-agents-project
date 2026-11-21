@@ -1,8 +1,9 @@
 """A5: mlx_vlm.train with a decision-weighted loss.
 
-Same CLI as `python -m mlx_vlm.train`, plus env ACTION_WEIGHT (default 4). Completion tokens of
-the `Action: ...` span get weight ACTION_WEIGHT, the `Thought: ...` span weight 1. The loss is
-normalised by the total weight, so its scale stays comparable to plain SFT.
+Same CLI as `python -m mlx_vlm.train`. Default (WEIGHT_MODE=hard): every completion token is
+weighted by (1 - p)^HARD_GAMMA, the model's current error on it (gradient stopped, floor 0.05), and
+the loss is normalised by the total weight. Tokens the model already predicts (boilerplate) fade
+out; the tokens that decide the action — wherever they appear, Thought or Action — dominate.
 
 Why: in UI-TARS outputs the action is decided by 1-2 tokens (first coordinate digit, first typed
 word); with uniform weights they are a small share of the loss and stay at 2+ nats while the
@@ -24,6 +25,12 @@ import mlx_vlm.trainer.vlm.cross_entropy.runtime as rt
 from mlx_vlm.trainer.losses.cross_entropy import token_cross_entropy
 
 W = float(os.environ.get("ACTION_WEIGHT", "4"))
+# MODE "hard" (default): per-token weight (1 - p)^GAMMA. MODE "action": fixed span weight W on the
+# Action span. "action" is kept for reference only: with template thoughts the decision is already
+# made inside the Thought ("Next, I'll click "30 min"."), so up-weighting the Action span misses it.
+MODE = os.environ.get("WEIGHT_MODE", "hard")
+GAMMA = float(os.environ.get("HARD_GAMMA", "1"))
+FLOOR = float(os.environ.get("HARD_FLOOR", "0.05"))
 _state: dict = {}
 _orig_process = ds.VisionDataset.process
 
@@ -39,7 +46,7 @@ def _process(self, row):
     ids = np.array(out["input_ids"]).reshape(-1)
     m = np.array(cm).reshape(-1).astype(np.int32)
     pos = np.flatnonzero((ids == _state["action_id"]) & (m > 0))
-    if pos.size:
+    if pos.size and MODE == "action":
         m[pos[-1]:] = m[pos[-1]:] * int(W)
     out["completion_mask"] = mx.array(m.reshape(np.array(cm).shape))
     return out
@@ -66,6 +73,11 @@ def _cross_entropy(logits, targets, mask=None, *, ignore_index=-100, vision_mask
         maskb = mx.logical_and(maskb, targets != ignore_index)
     safe = mx.where(maskb, targets, 0)
     tl = token_cross_entropy(logits, safe, ignore_index=None)
+    if MODE == "hard":
+        # weight = how wrong the model still is on this token (gradient stopped), floored.
+        # Boilerplate the model already predicts gets ~0 weight; the 1-2 decision tokens dominate.
+        p = mx.exp(-mx.stop_gradient(tl.astype(mx.float32)))
+        w = mx.maximum((1.0 - p) ** GAMMA, FLOOR)
     ww = mx.where(maskb, w, 0.0)
     loss = (tl * ww).sum() / mx.maximum(ww.sum(), 1.0)
     n = maskb.sum()

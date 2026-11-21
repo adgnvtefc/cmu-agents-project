@@ -32,6 +32,10 @@ KEY_NAMES = {"ctrl": "ControlOrMeta", "cmd": "ControlOrMeta", "meta": "ControlOr
 async def execute(page, action: dict) -> str:
     """Apply a parsed UI-TARS action to the page. Returns '' or an error note."""
     t = action["type"]
+    try:
+        before = await page.screenshot(type="jpeg", quality=30) if t != "wait" else None
+    except Exception:
+        before = None
     if t in ("click", "double_click", "right_click"):
         x, y = action["x"], action["y"]
         if not (0 <= x < VIEWPORT["width"] and 0 <= y < VIEWPORT["height"]):
@@ -63,7 +67,17 @@ async def execute(page, action: dict) -> str:
         await page.wait_for_load_state("load", timeout=3000)
     except Exception:
         pass
-    await asyncio.sleep(0.25)
+    # Wait until the screen actually reflects the action (up to 1.5 s), so the next screenshot is
+    # not a stale pre-action frame (a known cause of "repeat the last action" loops).
+    if before is not None:
+        for _ in range(10):
+            await asyncio.sleep(0.15)
+            try:
+                if await page.screenshot(type="jpeg", quality=30) != before:
+                    break
+            except Exception:
+                break
+    await asyncio.sleep(0.15)
     return ""
 
 
