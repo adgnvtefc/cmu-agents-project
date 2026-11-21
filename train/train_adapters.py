@@ -39,6 +39,23 @@ def reported_losses(log_path: Path) -> list[float]:
     return vals
 
 
+def run_guarded(cmd: list[str], log_path: Path) -> tuple[int, bool]:
+    """Run an mlx_vlm.train command; kill it if the reported loss goes NaN or blows up."""
+    diverged = False
+    with open(log_path, "w") as log:
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+        while proc.poll() is None:
+            time.sleep(10)
+            losses = reported_losses(log_path)
+            if losses and (any(math.isnan(x) for x in losses) or
+                           (len(losses) >= 3 and losses[-1] > 3 * losses[0] and losses[-1] > 1.5)):
+                diverged = True
+                proc.kill()
+                break
+        rc = proc.wait()
+    return rc, diverged
+
+
 def train_demos(root: Path, personas, skills) -> list[Path]:
     out = []
     for m in sorted(root.glob("*/*/*/meta.json")):
@@ -105,18 +122,7 @@ def main():
             cmd += ["--grad-clip", str(args.grad_clip)]
         t0 = time.time()
         print(f"train {args.condition} {pkey}/{skey}: {len(demos)} demos, {len(rows)} samples, {args.epochs} epochs", flush=True)
-        diverged = False
-        with open(out / "train.log", "w") as log:
-            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
-            while proc.poll() is None:
-                time.sleep(10)
-                losses = reported_losses(out / "train.log")
-                if losses and (any(math.isnan(x) for x in losses) or
-                               (len(losses) >= 3 and losses[-1] > 3 * losses[0] and losses[-1] > 1.5)):
-                    diverged = True
-                    proc.kill()
-                    break
-            rc = proc.wait()
+        rc, diverged = run_guarded(cmd, out / "train.log")
         losses = reported_losses(out / "train.log")
         info = {"condition": args.condition, "persona": pkey, "skill": skey, "train_personas": tp,
                 "train_skills": ts, "demos": [str(d) for d in demos], "samples": len(rows),
