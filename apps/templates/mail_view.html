@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ m.subject }}{% endblock %}
+{% block body %}
+{% include "_mail_sidebar.html" %}
+<main class="main">
+  <div class="toolbar">
+    <a class="btn ghost" href="/mail?folder={{ m.folder | urlencode }}" data-testid="back">← Back to {{ m.folder }}</a>
+    <a class="btn" href="/mail/compose?mode=reply&ref={{ m.id }}" data-testid="reply">Reply</a>
+    <a class="btn" href="/mail/compose?mode=replyall&ref={{ m.id }}" data-testid="reply-all">Reply all</a>
+    <a class="btn" href="/mail/compose?mode=forward&ref={{ m.id }}" data-testid="forward">Forward</a>
+    <form method="post" action="/mail/m/{{ m.id }}/star"><button class="btn" data-testid="star">{{ '★ Starred' if m.starred else '☆ Star' }}</button></form>
+    <form method="post" action="/mail/m/{{ m.id }}/unread"><button class="btn" data-testid="mark-unread">Mark unread</button></form>
+  </div>
+  <div class="moveto">
+    <span class="label">Move to:</span>
+    {% for f in S.mail.folders if f not in ('Sent', m.folder) %}
+    <form method="post" action="/mail/m/{{ m.id }}/move">
+      <input type="hidden" name="folder" value="{{ f }}">
+      <button class="btn small" data-testid="move-{{ f }}">{{ f }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  <article class="message">
+    <h1>{{ m.subject }}</h1>
+    <div class="meta">
+      <div><b>{{ m.from_name }}</b> &lt;{{ m.from }}&gt;</div>
+      <div>To: {{ m.to | join(', ') }}</div>
+      {% if m.cc %}<div>Cc: {{ m.cc | join(', ') }}</div>{% endif %}
+      {% if m.bcc %}<div>Bcc: {{ m.bcc | join(', ') }}</div>{% endif %}
+      <div class="date">{{ m.date }} · in {{ m.folder }}</div>
+    </div>
+    <pre class="body">{{ m.body }}</pre>
+  </article>
+</main>
+{% endblock %}

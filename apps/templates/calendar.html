@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Calendar{% endblock %}
+{% block body %}
+<aside class="sidebar">
+  <a class="btn primary big" href="/calendar/new" data-testid="new-event">＋ New event</a>
+  <p class="hint">Week of {{ days[0].strftime('%b %-d, %Y') }}</p>
+</aside>
+<main class="main cal">
+  <div class="toolbar">
+    <a class="btn" href="/calendar" data-testid="cal-today">Today</a>
+    <a class="btn" href="/calendar?week={{ prev }}" data-testid="cal-prev">‹ Previous week</a>
+    <a class="btn" href="/calendar?week={{ next }}" data-testid="cal-next">Next week ›</a>
+    <h1 class="inline">{{ days[0].strftime('%B %-d') }} – {{ days[-1].strftime('%B %-d, %Y') }}</h1>
+  </div>
+  <div class="grid">
+    <div class="hours">
+      <div class="dayhead"></div>
+      {% for h in hours %}<div class="hour">{{ '%02d:00' % h }}</div>{% endfor %}
+    </div>
+    {% for day in days %}
+    {% set iso = day.isoformat() %}
+    <div class="day {{ 'today' if iso == today }}">
+      <div class="dayhead">{{ day.strftime('%a') }} <b>{{ day.day }}</b></div>
+      <div class="slots">
+        {% for h in hours %}<div class="slot"></div>{% endfor %}
+        {% for e in by_day[iso] %}
+        {% set hh, mm = e.start.split(':') %}
+        {% set top = ((hh|int - 8) * 60 + mm|int) * 44 / 60 %}
+        <a class="event" href="/calendar/e/{{ e.id }}" data-testid="event-{{ e.id }}"
+           style="top: {{ top }}px; height: {{ [e.duration * 44 / 60 - 2, 18]|max }}px">
+          <b>{{ e.title }}</b> <span>{{ e.start }}–{{ add_minutes(e.start, e.duration) }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

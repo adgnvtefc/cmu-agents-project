@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Northwind{% endblock %} — Northwind Workspace</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Northwind</div>
+  <nav class="apps">
+    <a href="/mail" class="{{ 'active' if app_name == 'mail' }}" data-testid="nav-mail">Mail</a>
+    <a href="/calendar" class="{{ 'active' if app_name == 'calendar' }}" data-testid="nav-calendar">Calendar</a>
+    <a href="/drive" class="{{ 'active' if app_name == 'drive' }}" data-testid="nav-drive">Drive</a>
+  </nav>
+  <div class="me">
+    <span class="today">{{ S.today | fmt_date }}</span>
+    <span class="avatar">{{ S.me.name.split(' ')[0][0] }}{{ S.me.name.split(' ')[1][0] }}</span>
+    <span>{{ S.me.name }}</span>
+  </div>
+</header>
+{% if msg %}<div class="toast" data-testid="toast">{{ msg }}</div>{% endif %}
+<div class="layout">
+  {% block body %}{% endblock %}
+</div>
+</body>
+</html>

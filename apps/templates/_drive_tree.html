@@ -1,0 +1,8 @@
+<aside class="sidebar">
+  <a class="btn primary big" href="/drive?folder={{ folder | urlencode }}&new=1" data-testid="new-folder">＋ New folder</a>
+  <ul class="nav tree">
+    {% for t in tree %}
+    <li style="padding-left: {{ t.depth * 14 }}px"><a href="/drive?folder={{ t.path | urlencode }}" class="{{ 'active' if folder == t.path }}" data-testid="tree-{{ t.path }}">📁 {{ t.name }}</a></li>
+    {% endfor %}
+  </ul>
+</aside>
