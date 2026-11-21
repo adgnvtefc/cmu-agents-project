@@ -1,4 +1,4 @@
-# Status — Sat Nov 21 (autonomous block, 14:53–16:47)
+# Status — Sat Nov 21 (autonomous block, 14:53–16:50)
 
 Architecture (unchanged from PLAN.md): **mock apps → recorder → demos → {C1 demos-in-prompt,
 C2 skill file, C3 per-(user, skill) LoRA, C5/C6 controls} → offline + online evaluation.**
@@ -9,10 +9,11 @@ Everything runs locally on the Mac Studio (M5 Ultra, 96 GB) via MLX. No cloud.
 | Layer | State | Evidence |
 |---|---|---|
 | Mock apps (Mail, Calendar, Drive) | ✅ done | 32 task instances × 3 personas; checkers pass all 96 scripted demos, fail no-op, never pass another persona's prefs |
-| Recorder | ✅ done, 3 bugs fixed today | element map per frame; event time taken in-page; consistency check 598/608 clicks before fixes (see §4) |
+| Recorder | ✅ done, 3 bugs fixed today | element map per frame; event time taken in-page; 601/608 recorded clicks self-consistent (the 7 others are in 3 demos recorded under GPU load, flagged stale; see §4) |
 | Demo data | ⚠️ oracle only | `data/oracle/`: 96 scripted demos (dev data). **Human demos: 0 recorded yet** |
 | Model runtime | ✅ local | UI-TARS-1.5-7B bf16 in MLX: 2–3 s per agent step, 18 GB |
-| Training (C3/C5/C6/N1) | ✅ pipeline works, recipe being tuned | `train/train_adapters.py`, divergence guard; see §3 |
+| Training (C3/C5/C6/N1) | ✅ pipeline works, recipe being tuned | `train/train_adapters.py`, divergence guard; ~25 min per adapter (70 samples × 4 epochs); see §3 |
+| Full-study batch | ✅ written, not run | `scripts/overnight.sh` (skill files → C3/C5/C6 → offline eval of all arms) |
 | C1 demos in prompt | ✅ | `agent/context.py` |
 | C2 skill file | ⚠️ provisional writer | `agent/skillfile.py` uses local Qwen2.5-VL-7B; PLAN says frontier model (needs API key) |
 | Offline eval | ✅ | element-level click scoring + preference-critical split (`eval/summarize.py`) |
@@ -30,11 +31,17 @@ Everything runs locally on the Mac Studio (M5 Ultra, 96 GB) via MLX. No cloud.
 | C2 | skill file written from the 5 demos | 69% | 8/9 | 64% |
 | C3 | per-(Alice, calendar) LoRA, no prompt context | 62% | 6/9 | 61% |
 | C4 | LoRA + skill file | 71% | 6/9 | 73% |
+| C5 | calendar LoRA trained on **Bob's + Carol's** demos (control) | 45% | **0/9** | 58% |
 
 95% CIs are about ±14 points on all-steps and ±30 on pref-critical, so only C0 vs the rest is
 clearly separated. Read these as a pipeline dry run, not a result.
 
 What the errors show:
+- **C5 is the key control, and it behaves as the design needs:** an adapter trained on other
+  users' calendar demos gets 0/9 of Alice's preference steps. It applies *their* habits instead:
+  it types Bob's 15:00 / 11:00 start times where Alice uses 14:00 / 10:00. Alice's own adapter
+  (C3) gets 6/9. So the per-user adapter carries *that user's* choices, not just "how to use the
+  calendar app".
 - **C3 learned Alice's values but not all of her steps.** It types her 14:00 / 10:00 start
   times and picks her 10-minute reminder, but in all 3 test demos it skips clicking "30 min"
   (it goes straight to Guests, leaving the 60-minute default). It also sometimes repeats the
