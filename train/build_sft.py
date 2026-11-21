@@ -9,12 +9,12 @@ import argparse
 import json
 from pathlib import Path
 
+from agent.thoughts import step_response
 from agent.uitars import build_messages, to_uitars
 
 
 def response(step: dict) -> str:
-    thought = step.get("thought") or ""
-    return f"Thought: {thought}\nAction: {to_uitars(step['action'])}"
+    return step_response(step, to_uitars)
 
 
 def demo_samples(d: Path, n_images: int):

@@ -12,7 +12,7 @@
   <h1>📄 {{ f.name }}</h1>
   <p class="hint">In {{ f.folder }} · modified {{ f.modified }}</p>
   <form class="inline-form" method="post" action="/drive/f/{{ f.id }}/rename">
-    <input type="text" name="name" value="{{ f.name }}" data-testid="file-name" autocomplete="off">
+    <input type="text" name="name" value="{{ f.name }}" aria-label="File name" data-testid="file-name" autocomplete="off">
     <button class="btn" data-testid="file-rename">Rename</button>
   </form>
   {% if moving %}

@@ -118,7 +118,8 @@ def parse_response(text: str) -> dict:
     return out
 
 
-def build_messages(instruction: str, screenshots: list, history: list[str], n_images: int = 5):
+def build_messages(instruction: str, screenshots: list, history: list[str], n_images: int = 5,
+                   context: str = ""):
     """UI-TARS multi-turn format: user(prompt+img0), assistant(resp0), user(img1), ...
 
     screenshots: list of image paths for steps 0..k (the last one is the current screen).
@@ -129,7 +130,10 @@ def build_messages(instruction: str, screenshots: list, history: list[str], n_im
     k = len(screenshots) - 1
     assert len(history) == k
     keep_from = max(0, k + 1 - n_images)
-    messages = [{"role": "user", "content": [{"type": "text", "text": COMPUTER_USE_PROMPT.format(instruction=instruction)}]}]
+    system = COMPUTER_USE_PROMPT.format(instruction=instruction)
+    if context:
+        system = system.replace("## User Instruction", context.strip() + "\n\n## User Instruction")
+    messages = [{"role": "user", "content": [{"type": "text", "text": system}]}]
     images = []
     for i in range(k + 1):
         if i >= keep_from:

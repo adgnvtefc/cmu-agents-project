@@ -53,7 +53,7 @@ async def ainput(prompt: str = "") -> str:
 
 
 async def record_one(browser, base: str, persona: str, task_id: str, driver=None,
-                     out_root: Path | None = None) -> bool:
+                     out_root: Path | None = None, source: str = "human") -> bool:
     """driver: optional async fn(page) that performs the demo (scripted mode, no prompts)."""
     interactive = driver is None
     task = get_task(task_id)
@@ -74,7 +74,9 @@ async def record_one(browser, base: str, persona: str, task_id: str, driver=None
         queue: asyncio.Queue = asyncio.Queue()
 
         async def on_event(source, payload):
-            queue.put_nowait((time.monotonic(), payload))
+            # Use the page-side event time, not arrival time: under load the binding call can
+            # arrive after later frames were captured, which would mislabel post-action frames.
+            queue.put_nowait((payload.get("ts", time.time() * 1000) / 1000.0, payload))
 
         await context.expose_binding("__rec", on_event)
         await context.add_init_script(CAPTURE_JS)
@@ -87,10 +89,18 @@ async def record_one(browser, base: str, persona: str, task_id: str, driver=None
 
         async def capturer():
             while not stop.is_set():
-                t0 = time.monotonic()
+                t0 = time.time()
                 try:
+                    # Element map FIRST, then pixels: a frame is only used if both finished before
+                    # the user's action (t_end < t_event), so they describe the same page state.
+                    url0 = page.url
+                    try:
+                        elements = await page.evaluate("window.__elementMap ? window.__elementMap() : null")
+                    except Exception:
+                        elements = None
                     png = await page.screenshot(type="png", timeout=3000)
-                    frames.append(Frame(t0, time.monotonic(), png))
+                    if page.url == url0:
+                        frames.append(Frame(t0, time.time(), png, elements))
                     if len(frames) > 60:
                         del frames[:-60]
                 except Exception:
@@ -98,7 +108,7 @@ async def record_one(browser, base: str, persona: str, task_id: str, driver=None
                 await asyncio.sleep(FRAME_INTERVAL_S)
 
         builder = ActionBuilder()
-        t_start = time.monotonic()
+        t_start = time.time()
         cap = asyncio.create_task(capturer())
         await asyncio.sleep(0.5)
         if interactive:
@@ -117,7 +127,7 @@ async def record_one(browser, base: str, persona: str, task_id: str, driver=None
             while not queue.empty():
                 t, ev = queue.get_nowait()
                 builder.feed(t, ev, frames)
-            t_end = time.monotonic()
+            t_end = time.time()
             builder.finish(t_end, frames, page.url)
         finally:
             stop.set()
@@ -144,6 +154,7 @@ async def record_one(browser, base: str, persona: str, task_id: str, driver=None
                     "step": i, "obs": fname if a["frame"] else None, "action": a["action"],
                     "target": a["target"], "url": a["url"], "t": round(a["t"] - t_start, 3),
                     "stale_obs": a["stale"],
+                    "elements": a["frame"].elements if a["frame"] else None,
                 }) + "\n")
         (out / "state_before.json").write_text(json.dumps(before, indent=1))
         (out / "state_after.json").write_text(json.dumps(after, indent=1))
@@ -167,7 +178,7 @@ async def record_one(browser, base: str, persona: str, task_id: str, driver=None
             "persona": persona, "task_id": task_id, "skill": task["skill"], "split": task["split"],
             "instruction": task["instruction"], "start_url": START_URL[task["skill"]],
             "viewport": VIEWPORT, "n_steps": len(builder.actions), "duration_s": round(t_end - t_start, 2),
-            "n_stale": n_stale, "check": result, "accepted": accepted, "recorded_at": stamp,
+            "n_stale": n_stale, "check": result, "accepted": accepted, "recorded_at": stamp, "source": source,
         }
         (out / "meta.json").write_text(json.dumps(meta, indent=1))
         print(("✓ kept → " if accepted else "✗ discarded (files left for debugging) → ") + str(out))

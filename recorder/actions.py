@@ -19,6 +19,7 @@ class Frame:
     t_start: float
     t_end: float
     png: bytes
+    elements: list | None = None  # interactive-element map captured with this frame
 
 
 @dataclass

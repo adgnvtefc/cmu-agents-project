@@ -3,7 +3,8 @@
 (() => {
   if (window.__recInstalled) return;
   window.__recInstalled = true;
-  const send = (payload) => { try { window.__rec(payload); } catch (e) {} };
+  // ts: wall-clock time of the event itself (the binding call may be delivered late under load)
+  const send = (payload) => { try { window.__rec({...payload, ts: Date.now()}); } catch (e) {} };
 
   const INTERACTIVE = 'a,button,input,textarea,select,label,[role=button],[data-testid]';
   const describe = (el) => {
@@ -12,6 +13,8 @@
     const r = t.getBoundingClientRect();
     return {
       tag: t.tagName.toLowerCase(),
+      id: identity(t),
+      label: nameOf(t),
       testid: t.getAttribute('data-testid'),
       text: (t.innerText || t.value || '').trim().slice(0, 80),
       name: t.getAttribute('name'),
@@ -21,6 +24,42 @@
       bbox: [r.left, r.top, r.width, r.height],
     };
   };
+  // Human-readable name of an element (label text for fields, visible text for buttons/links).
+  const nameOf = (t) => {
+    if (!t) return '';
+    if (t.labels && t.labels.length) {
+      const lbl = t.labels[0].cloneNode(true);
+      lbl.querySelectorAll('input,textarea,select').forEach((x) => x.remove());
+      return lbl.innerText.trim().slice(0, 60);
+    }
+    if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') {  // never name a field by its value
+      return (t.getAttribute('aria-label') || t.getAttribute('placeholder') || t.getAttribute('name') || '').trim().slice(0, 60);
+    }
+    return (t.innerText || t.getAttribute('aria-label') || t.value || '').trim().slice(0, 60);
+  };
+
+  // Identity of what a click at an element would activate: a <label> activates its control.
+  const identity = (t) => {
+    let el = t;
+    if (el.tagName === 'LABEL' && el.control) el = el.control;
+    return el.getAttribute('data-testid') || `${el.tagName.toLowerCase()}:${nameOf(el)}`;
+  };
+
+  // Snapshot of every visible interactive element: used to score predicted clicks offline
+  // (a predicted point is correct if it would activate the same element as the gold click).
+  window.__elementMap = () => {
+    const out = [];
+    document.querySelectorAll(INTERACTIVE).forEach((t) => {
+      const r = t.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1 || r.bottom < 0 || r.top > innerHeight) return;
+      const cs = getComputedStyle(t);
+      if (cs.visibility === 'hidden' || cs.display === 'none') return;
+      out.push({id: identity(t), name: nameOf(t), tag: t.tagName.toLowerCase(),
+                bbox: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]});
+    });
+    return out;
+  };
+
   const editable = (el) => el && (el.tagName === 'TEXTAREA' ||
     (el.tagName === 'INPUT' && !['radio', 'checkbox', 'submit', 'button', 'hidden'].includes(el.type)));
 
