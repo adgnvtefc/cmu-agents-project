@@ -16,7 +16,8 @@ Everything runs locally on the Mac Studio (M5 Ultra, 96 GB) via MLX. No cloud.
 | C1 demos in prompt | ✅ | `agent/context.py` |
 | C2 skill file | ⚠️ provisional writer | `agent/skillfile.py` uses local Qwen2.5-VL-7B; PLAN says frontier model (needs API key) |
 | Offline eval | ✅ | element-level click scoring + preference-critical split (`eval/summarize.py`) |
-| Online eval (live agent) | ✅ | `agent/run.py`; zero-shot gate passed |
+| Online eval (live agent) | ✅ | `agent/run.py`; zero-shot gate passed; loop detector |
+| Router (R) | ✅ simple version | `agent/router.py`: 33/36 held-out instructions to the right skill; the 3 misses fall back to the base model (0 wrong-adapter routes) |
 
 ## 2. Results so far (oracle demos, Alice × calendar, 3 test demos = 42 steps)
 
@@ -101,7 +102,8 @@ Zero-shot live gate (base model, Alice, one test task per skill): 2/4 tasks comp
   skill. The paper needs the 96 human recordings (recorder is ready; see README).
 - C5 (same skill, other users), C6 (pooled) and N1 are implemented in `train/train_adapters.py`
   but not trained yet. Each run takes ~25–50 min on this Mac, so they belong in an overnight batch.
-- Router (R) not built yet (small: instruction → skill nearest neighbour).
+- Router is lexical (TF-IDF over the user's demo instructions); paraphrases with no shared
+  words fall back to the base model. An embedding router is an easy upgrade if needed.
 - 3 oracle demos still have flagged stale frames (recorded under GPU load); re-record when idle.
 - The proposal's "record → train → use" end-user flow has no single UI yet (recorder CLI +
   training CLI + agent CLI exist separately).
