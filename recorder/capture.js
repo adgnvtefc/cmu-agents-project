@@ -5,6 +5,8 @@
   window.__recInstalled = true;
   // ts: wall-clock time of the event itself (the binding call may be delivered late under load)
   const send = (payload) => { try { window.__rec({...payload, ts: Date.now()}); } catch (e) {} };
+  // Input on the Studio overlay is not part of the demo.
+  const fromStudio = (e) => (e.composedPath ? e.composedPath() : []).some((n) => n && n.id === '__studio');
 
   const INTERACTIVE = 'a,button,input,textarea,select,label,[role=button],[data-testid]';
   const describe = (el) => {
@@ -65,6 +67,7 @@
 
   let lastLabel = null, lastLabelT = 0;
   document.addEventListener('click', (e) => {
+    if (fromStudio(e)) return;
     if (e.detail === 0) return;  // synthetic (keyboard activation)
     // Clicking a <label> also dispatches a click on its control: drop that duplicate.
     if (lastLabel && lastLabel.control === e.target && performance.now() - lastLabelT < 200) {
@@ -78,11 +81,13 @@
   }, true);
 
   document.addEventListener('contextmenu', (e) => {
+    if (fromStudio(e)) return;
     send({kind: 'click', x: e.clientX, y: e.clientY, button: 2, detail: 1,
           target: describe(e.target), url: location.href});
   }, true);
 
   document.addEventListener('keydown', (e) => {
+    if (fromStudio(e)) return;
     const el = e.target;
     send({kind: 'keydown', key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey,
           editable: editable(el), value: editable(el) ? el.value : null,
@@ -91,12 +96,14 @@
   }, true);
 
   document.addEventListener('input', (e) => {
+    if (fromStudio(e)) return;
     const el = e.target;
     if (!editable(el)) return;
     send({kind: 'input', inputType: e.inputType, value: el.value, target: describe(el), url: location.href});
   }, true);
 
   document.addEventListener('wheel', (e) => {
+    if (fromStudio(e)) return;
     send({kind: 'wheel', x: e.clientX, y: e.clientY, dx: e.deltaX, dy: e.deltaY,
           target: describe(e.target), url: location.href});
   }, {capture: true, passive: true});

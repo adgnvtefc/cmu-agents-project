@@ -9,6 +9,19 @@ uv sync
 uv run playwright install chromium
 ```
 
+## Studio: create a skill from your own demos
+```bash
+uv run python -m studio --persona alice
+```
+A browser window opens on the workspace with a small overlay:
+- **Create skill** → name it → a demo bar (x/5) and **Record**.
+- Type what you will do, then **Record** and do it in the window. **Stop** ends the take,
+  **Submit** saves it, **Redo** throws it away and starts again from a clean workspace.
+- At 5/5 demos the skill's adapter trains automatically (C3, this user only).
+
+Demos are saved to `data/studio/<user>/<skill>_<n>/` and adapters to
+`adapters/studio/C3/<user>/<skill>/seed0`. The overlay never appears in the recorded screenshots.
+
 ## Run the mock workspace (Mail · Calendar · Drive)
 ```bash
 uv run uvicorn apps.server:app --port 8917

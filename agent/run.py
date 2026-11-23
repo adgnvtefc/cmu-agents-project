@@ -96,8 +96,12 @@ def _looping(log: list, n: int = 4) -> bool:
 
 
 async def run_episode(model, processor, browser, base: str, persona: str, task_id: str, out: Path,
-                      n_images: int = 3, max_steps: int = 25, context: str = "") -> dict:
-    task = get_task(task_id)
+                      n_images: int = 3, max_steps: int = 25, context: str = "",
+                      instruction: str | None = None) -> dict:
+    """instruction: overrides the task's wording (the app state and checker still come from task_id)."""
+    task = dict(get_task(task_id))
+    if instruction:
+        task["instruction"] = instruction
     async with httpx.AsyncClient(base_url=base) as api:
         (await api.post("/__reset", json={"persona": persona, "task_id": task_id})).raise_for_status()
         ctx = await browser.new_context(viewport=VIEWPORT, device_scale_factor=1)
@@ -128,10 +132,16 @@ async def run_episode(model, processor, browser, base: str, persona: str, task_i
             history.append(res.text.strip())
             log.append({"step": k, "raw": res.text, "action": act, "error": err,
                         "latency": round(time.perf_counter() - t0, 2), "prompt_tokens": res.prompt_tokens})
+            with open(ep_dir / "live.jsonl", "a") as fh:  # per-step progress for live viewers (Studio)
+                fh.write(json.dumps(log[-1]) + "\n")
             if finished:
                 break
             if _looping(log):
                 break
+        try:
+            await page.screenshot(path=str(ep_dir / "final.png"))  # the end state (for viewers)
+        except Exception:
+            pass
         await ctx.close()
         result = (await api.get("/__check")).json()
     looped = _looping(log)
@@ -153,6 +163,7 @@ async def main():
     ap.add_argument("--n-images", type=int, default=3)
     ap.add_argument("--max-steps", type=int, default=25)
     ap.add_argument("--context-file", default=None, help="text inserted into the prompt (ICL demos / SKILL.md)")
+    ap.add_argument("--instruction", default=None, help="override the task's instruction wording")
     args = ap.parse_args()
     model, processor = load(args.model, adapter_path=args.adapter)
     context = Path(args.context_file).read_text() if args.context_file else ""
@@ -162,7 +173,7 @@ async def main():
         for persona in args.persona:
             for tid in args.tasks:
                 ep = await run_episode(model, processor, browser, args.base, persona, tid, out,
-                                       args.n_images, args.max_steps, context)
+                                       args.n_images, args.max_steps, context, args.instruction)
                 c = ep["check"]
                 print(f"{persona:5s} {tid:17s} success={c['success']} joint={c['joint']} prefs={c['prefs']} "
                       f"steps={ep['steps']} finished={ep['finished']} fmt_err={ep['format_errors']} {ep['seconds']}s")
