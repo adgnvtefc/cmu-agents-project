@@ -2,7 +2,7 @@
 
   uv run python -m studio --persona alice
 
-Opens the workspace (Mail · Calendar · Drive) in a browser window with an overlay:
+Opens the workspace (Mail · Calendar · Drive) in a browser window, with a small Studio panel beside it:
   Create skill → name it → demo bar (x/5) + Record
   Record       → Stop · Submit · Redo
   5/5 demos    → the skill's adapter trains automatically (C3, this user only)
@@ -13,6 +13,8 @@ Adapters: adapters/studio/C3/<persona>/<skill>/seed0
 
 import argparse
 import asyncio
+import base64
+import io
 import json
 import os
 import re
@@ -24,6 +26,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
+from PIL import Image
 from playwright.async_api import async_playwright
 
 from recorder.actions import ActionBuilder, Frame
@@ -35,7 +38,18 @@ ADAPTERS = ROOT / "adapters" / "studio" / "C3"
 GOAL = 5
 EPOCHS = int(os.environ.get("STUDIO_EPOCHS", "4"))
 OVERLAY_JS = (Path(__file__).parent / "overlay.js").read_text()
-HIDE_OVERLAY = "#__studio { display: none !important; }"  # never in the training screenshots
+PANEL = {"width": 300, "height": 230}
+
+
+def to_viewport(png: bytes) -> bytes:
+    """A visible window on a Retina screen captures at 2x; the model works at 1288x812."""
+    img = Image.open(io.BytesIO(png))
+    size = (VIEWPORT["width"], VIEWPORT["height"])
+    if img.size == size:
+        return png
+    buf = io.BytesIO()
+    img.convert("RGB").resize(size, Image.LANCZOS).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def slug(name: str) -> str:
@@ -50,6 +64,7 @@ class Studio:
         self.instruction = ""
         self.error = None
         self.page = None
+        self.cdp = None   # DevTools session on the workspace page: screenshots that never touch the page
         self.frames: list[Frame] = []
         self.builder = None
         self.capture_task = None
@@ -91,7 +106,10 @@ class Studio:
             try:
                 url0 = self.page.url
                 elements = await self.page.evaluate("window.__elementMap ? window.__elementMap() : null")
-                png = await self.page.screenshot(type="png", timeout=3000, style=HIDE_OVERLAY)
+                # Raw DevTools capture: page.screenshot() in a visible window re-applies the viewport
+                # override on every call, which makes the whole page visibly jump.
+                shot = await self.cdp.send("Page.captureScreenshot", {"format": "png"})
+                png = base64.b64decode(shot["data"])
                 if self.page.url == url0:
                     self.frames.append(Frame(t0, time.time(), png, elements))
                     del self.frames[:-60]
@@ -134,7 +152,7 @@ class Studio:
             for i, a in enumerate(self.builder.actions):
                 fname = f"frames/{i:03d}.png"
                 if a["frame"] is not None:
-                    (out / fname).write_bytes(a["frame"].png)
+                    (out / fname).write_bytes(to_viewport(a["frame"].png))
                 fh.write(json.dumps({"step": i, "obs": fname if a["frame"] else None, "action": a["action"],
                                      "target": a["target"], "url": a["url"], "t": round(a["t"] - self.t_start, 3),
                                      "stale_obs": a["stale"],
@@ -196,6 +214,15 @@ class Studio:
         return self.state()
 
 
+async def place(cdp, left: int, top: int):
+    """Move a window (headed only)."""
+    try:
+        win = await cdp.send("Browser.getWindowForTarget")
+        await cdp.send("Browser.setWindowBounds", {"windowId": win["windowId"], "bounds": {"left": left, "top": top}})
+    except Exception:
+        pass
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--persona", default="alice")
@@ -219,15 +246,23 @@ async def main():
     studio = Studio(args.persona, args.base)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=os.environ.get("STUDIO_HEADLESS") == "1")
+        # Workspace window: what gets recorded.
         ctx = await browser.new_context(viewport=VIEWPORT, device_scale_factor=1)
         await ctx.route("**/__*", lambda route: route.abort())  # the page never sees the control API
         await ctx.expose_binding("__rec", studio.on_event)
-        await ctx.expose_binding("__studio", studio.handle)
         await ctx.add_init_script(CAPTURE_JS)
-        await ctx.add_init_script(OVERLAY_JS)
         studio.page = await ctx.new_page()
+        studio.cdp = await ctx.new_cdp_session(studio.page)
         await studio.page.goto(args.base + "/mail")
-        print(f"Studio open for {args.persona}. Close the browser window to quit.")
+        # Studio panel: its own small window to the right of the workspace.
+        pctx = await browser.new_context(viewport=PANEL)
+        await pctx.expose_binding("__studio", studio.handle)
+        panel = await pctx.new_page()
+        await panel.set_content("<!doctype html><title>Studio</title><body style='margin:0;background:#1d2430'></body>")
+        await panel.add_script_tag(content=OVERLAY_JS)
+        await place(studio.cdp, 20, 20)
+        await place(await pctx.new_cdp_session(panel), 20 + VIEWPORT["width"] + 16, 20)
+        print(f"Studio open for {args.persona}. Close the workspace window to quit.")
         closed = asyncio.Event()
         studio.page.on("close", lambda _: closed.set())
         await closed.wait()

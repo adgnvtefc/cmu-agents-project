@@ -1,6 +1,7 @@
-// Studio overlay: floats over the workspace. Talks to Python through the __studio binding.
+// Studio panel: a small window beside the workspace (never in the recorded screenshots).
+// Talks to Python through the __studio binding.
 (() => {
-  if (window.top !== window || window.__studioInstalled) return;
+  if (window.__studioInstalled) return;
   window.__studioInstalled = true;
   const call = (op, data = {}) => window.__studio({ op, ...data });
 
@@ -8,8 +9,7 @@
   host.id = '__studio';
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `<style>
-    .box { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; width: 260px; padding: 14px;
-      background: #1d2430; color: #fff; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.28);
+    .box { padding: 14px; background: #1d2430; color: #fff; min-height: 100vh; box-sizing: border-box;
       font: 13px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif; }
     button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer;
       background: #2f6fde; color: #fff; }
