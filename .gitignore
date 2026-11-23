@@ -8,3 +8,4 @@ adapters/
 data/
 results/
 skills/
+.claude/scheduled_tasks.lock
