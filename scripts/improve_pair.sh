@@ -40,9 +40,9 @@ for C in C0 C1 C3 A1 A2 A3 A4 A5; do
         ARGS=(--adapter $A/$C/$P/$S/seed0); RARGS=(--adapter $A/$C/$P/$S/seed0) ;;
   esac
   OFF=results/offline_dev/oracle/$C/$PAIR.jsonl
-  [ -s $OFF ] || uv run python -m eval.offline --model $M --demos $ROOT/$P --skill $S --split dev "${ARGS[@]}" --out $OFF 2>&1 | grep -v -i warn | tail -1
+  [ -s $OFF ] || uv run python -m eval.offline --model $M --demos $ROOT/$P --skill $S --split dev ${ARGS[@]+"${ARGS[@]}"} --out $OFF 2>&1 | grep -v -i warn | tail -1
   ON=results/online_dev/oracle/$PAIR/$C
-  [ -d $ON ] || uv run python -m agent.run --persona $P --tasks $DEV --base http://127.0.0.1:8918 --max-steps 24 "${RARGS[@]}" --out $ON 2>&1 | grep -v -i warn
+  [ -d $ON ] || uv run python -m agent.run --persona $P --tasks $DEV --base http://127.0.0.1:8918 --max-steps 24 ${RARGS[@]+"${RARGS[@]}"} --out $ON 2>&1 | grep -v -i warn
   log "done $C"
 done
 

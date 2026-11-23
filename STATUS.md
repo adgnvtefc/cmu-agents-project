@@ -127,3 +127,52 @@ Zero-shot live gate (base model, Alice, one test task per skill): 2/4 tasks comp
    which hides the personalization signal. Recommended: keep the wording but add the date
    ("Thursday, Nov 19") to calendar instructions, so success measures the skill, not arithmetic.
    This changes 8 task instances; human recording should start after this is decided.
+
+## 6. C3-improvement study (Sat Nov 21, 17:48–23:40) — dev split, oracle demos, seed 0
+Five ways to improve the per-(user, skill) LoRA, each using only what a deployed system has (the
+user's demos, other users' demos, the base model, the app, persona-independent task checks).
+Code: `train/improve.py`, `train/weighted_sft.py`, `scripts/improve_pair.sh`.
+Research behind the five: `reports/Improving per user LoRA adapters.md`.
+
+| Arm | Change vs C3 | Alice×calendar offline all / critical (18) | online success · pref adherence | Bob×send_email offline all / critical (12) | online success · pref adherence |
+|---|---|---|---|---|---|
+| C0 | base model | 42% / 5 | 0/6 · 0% | 44% / 0 | 3/6 · 25% |
+| C1 | demos in prompt | **85% / 18** | 1/6 · **77%** | 74% / 3 | 2/6 · 29% |
+| C3 | per-user LoRA | 71% / 12 | 2/6 · 40% | 80% / 5 | **5/6 · 75%** |
+| A1 | + self-training on C3+demos rollouts | 51% / 6 | 0/6 · 0% | **87%** / 6 | 0/6 · 75% |
+| A2 | + DPO vs other users' actions | 76% / **17** | 0/6 · 0% | 72% / 3 | 2/6 · 33% |
+| A3 | init from C5, then user demos | 52% / 6 | 4/6* · 40% | — (C5 hit NaN) | — |
+| A4 | habit thoughts, ×3 upsampling | 37% / 8 | 0/6 · 0% | — (hit NaN) | — |
+| A5 | hard-token weighted loss | 50% / 0 | 0/6 · 0% | 80% / 5 | 5/6 · 75% |
+
+\* A3 never emits `finished`; it starts a second event in 2 of 6 runs, so 4/6 overstates it.
+
+**Result: no approach beats plain C3 on both pairs.**
+- A2 is the only arm that adds the missing *click* preferences (it clicks "30 min"; C3 never
+  does), but online its Thought and Action stop matching and it loses track of the form → 0/6.
+  On Bob (preferences inside typed text) it is worse than C3.
+- A1 is best offline on Bob but online sends emails with no body (clicks Message, then Send).
+- A4 and A5 degrade the model on Alice (A4 types without clicking fields; A5 types garbage).
+- Biggest confound: relative weekdays ("Tuesday") → every arm types wrong dates; this, not
+  preferences, decides most calendar failures (see decision 4).
+- Instability: 2 of 8 trainings hit NaN in bf16 (Bob C5, Bob A4).
+- Bob's sign-off ("- Bob") is missed by every arm: the one preference inside long free text.
+
+Caveats: oracle (scripted) demos, 6 dev tasks per pair, one seed, step CIs are optimistic.
+
+## 7. Rerun with today's date in the prompt + A2b (Sun Nov 22–Mon Nov 23) — dev split, oracle demos, seed 0
+`PROMPT_DATE=1` adds "Today is Monday, November 16, 2026" to every prompt (training and eval); C3
+retrained with it. A2b = A2 + SFT anchor (ORPO from C3 over every demo step). Script:
+`scripts/dated_pair.sh`; results under `results/*/oracle_dated/`.
+
+| Arm | Alice×calendar offline all / critical | online success · adherence | Bob×send_email offline all / critical | online success · adherence |
+|---|---|---|---|---|
+| C0 | 40% / 4 of 18 | 0/6 · 0% | 44% / 0 of 12 | 0/6 · 0% |
+| C1 | **88%** / 18 | 3/6 · **87%** | 70% / 2 | 3/6 · 29% |
+| C3 | 81% / **18** | **4/6** · 67% | **78%** / 3 | **5/6 · 88%** |
+| A2b | 67% / 17 | 0/6 · 0% | 70% / 2 | 3/6 · 71% |
+
+- The date line lifted C3 on Alice from 2/6 → 4/6 and 40% → 67% adherence; offline critical 12 → 18/18.
+- A2b still fails online on Alice (date typed as 11/17/2026, morning time, then loops) and is below C3 on Bob.
+- Bob's emails contain no dates, so his C3 change (75% → 88%) is retraining variance, not the date.
+- Scope: 2 of 12 pairs, scripted demos, 6 tasks each, one seed. A pilot finding, not a settled recipe.

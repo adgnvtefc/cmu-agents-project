@@ -6,6 +6,8 @@ task checks. Never the persona cards or the preference checker.
                             task-successful episodes; continue C3 on teacher data + demos
   A2 contrastive DPO        DPO-Positive from C3; at the user's distinctive steps, the other users'
                             action at the same UI state is the rejected answer
+  A2b A2 + SFT anchor       ORPO from C3 over every demo step (SFT everywhere, contrast where
+                            users differ); fixes A2 losing whole-trajectory behaviour online
   A3 two-stage warm start   start from C5 (same skill, other users), fine-tune on the user's demos
   A4 habit thoughts         distinctive steps get thoughts that state the habit; upsampled x3
   A5 decision-weighted loss action span weighted x4 in the loss (train/weighted_sft.py)
@@ -89,7 +91,7 @@ def habit_thought(step):
 
 
 # ------------------------------------------------------------------ training runners
-def run_train(rows, out: Path, *, init=None, epochs=4, lr=5e-5, weighted=False, extra=None):
+def run_train(rows, out: Path, *, init=None, epochs=4, lr=5e-5, weighted=False, extra=None, dropout=0.05):
     data = out / "data"
     data.mkdir(parents=True, exist_ok=True)
     with open(data / "train.jsonl", "w") as fh:
@@ -97,7 +99,7 @@ def run_train(rows, out: Path, *, init=None, epochs=4, lr=5e-5, weighted=False, 
             fh.write(json.dumps(r) + "\n")
     mod = "train.weighted_sft" if weighted else "mlx_vlm.train"
     cmd = [sys.executable, "-m", mod, "--model", str(MODEL), "--data", str(data),
-           "--train-type", "lora", "--lora-rank", "16", "--lora-alpha", "16", "--lora-dropout", "0.05",
+           "--train-type", "lora", "--lora-rank", "16", "--lora-alpha", "16", "--lora-dropout", str(dropout),
            "--learning-rate", str(lr), "--warmup-steps", "20", "--batch-size", "1",
            "--iters", str(max(1, int(epochs * len(rows)))), "--steps-per-report", "10",
            "--max-seq-length", "8192", "--grad-checkpoint", "--seed", "0", "--output-path", str(out)]
@@ -153,38 +155,66 @@ def a3(root, persona, skill, out):
     return run_train(plain_rows(root, persona, skill), out, init=init, epochs=2)
 
 
-def a2(root, persona, skill, out):
-    init = ROOT / "adapters" / root.name / "C3" / persona / skill / "seed0"
-    # Pair at ANY state where another user did something this user never does (e.g. Alice clicks
-    # "CC", Bob never does): rejected = the other user's action, chosen = this user's action.
+def contrast_steps(root, persona, skill):
+    """Every step of the user's demos with the other users' conflicting actions at that UI state.
+
+    Yields (msgs, imgs, chosen_text, [rejected_text, ...]). Rejected = an action another user takes
+    at the same UI state (previous action type + element) that this user never takes (e.g. Bob
+    types "15:00" where Alice types "14:00"). Matched across all task instances: a deployed system
+    never has two users doing the identical task.
+    """
     my_keys = {action_key(s) for d in demos(root, persona, skill) for s in load(d)[1]}
-    pairs = []
-    # Other users' demos are matched by UI STATE only (previous action type + element), across all
-    # their task instances: a deployed system never has two users doing the identical task.
     other_steps = [load(x)[1] for o in PERSONAS if o != persona for x in demos(root, o, skill)]
     for d in demos(root, persona, skill):
         meta, steps, shots = load(d)
         resp = [step_response(s, to_uitars) for s in steps]
         for k, s in enumerate(steps):
-            seen = set()
+            seen, rejected = set(), []
             for osteps in other_steps:
                 for j in range(len(osteps)):
                     ok = action_key(osteps[j])
-                    # typed text is instance-specific; compare typed actions by element + value only
-                    # when it is not this instance's entity text
+                    sig = (ok[0], ok[1], ok[2] if ok[0] != "type" else None)
                     if (state_key(osteps, j) == state_key(steps, k) and ok != action_key(s)
-                            and ok not in my_keys and (ok[0], ok[1], ok[2] if ok[0] != "type" else None) not in seen):
+                            and ok not in my_keys and sig not in seen):
                         if ok[0] == "type" and ok[1] == action_key(s)[1] and len(ok[2] or "") > 40:
                             continue  # long free text from another task (email bodies): not comparable
-                        seen.add((ok[0], ok[1], ok[2] if ok[0] != "type" else None))
-                        msgs, imgs = build_messages(meta["instruction"], shots[: k + 1], resp[:k], N_IMAGES)
-                        rej = step_response(osteps[j], to_uitars)
-                        pairs.append({"images": imgs,
-                                      "chosen": msgs + [{"role": "assistant", "content": [{"type": "text", "text": resp[k]}]}],
-                                      "rejected": msgs + [{"role": "assistant", "content": [{"type": "text", "text": rej}]}]})
+                        seen.add(sig)
+                        rejected.append(step_response(osteps[j], to_uitars))
+            msgs, imgs = build_messages(meta["instruction"], shots[: k + 1], resp[:k], N_IMAGES)
+            yield msgs, imgs, resp[k], rejected
+
+
+def _pair(msgs, imgs, chosen, rejected):
+    return {"images": imgs,
+            "chosen": msgs + [{"role": "assistant", "content": [{"type": "text", "text": chosen}]}],
+            "rejected": msgs + [{"role": "assistant", "content": [{"type": "text", "text": rejected}]}]}
+
+
+def a2(root, persona, skill, out):
+    init = ROOT / "adapters" / root.name / "C3" / persona / skill / "seed0"
+    pairs = [_pair(m, i, c, r) for m, i, c, rej in contrast_steps(root, persona, skill) for r in rej]
     print(f"A2 {persona}/{skill}: {len(pairs)} preference pairs")
     return run_train(pairs, out, init=init, epochs=3, lr=1e-5,
                      extra=["--algorithm", "dpo", "--loss-type", "dpop", "--beta", "0.1", "--delta", "50"])
+
+
+def a2b(root, persona, skill, out):
+    """A2 with an SFT anchor: ORPO from C3 over EVERY demo step.
+
+    ORPO loss = NLL(chosen) + beta * odds-ratio(chosen vs rejected). Steps with a conflicting
+    action from another user get one row per rejected action; all other steps get rejected =
+    chosen, whose preference gradient is exactly zero (dropout 0), so they are plain SFT. The
+    model keeps learning whole trajectories (what A2 lost online) while being pushed away from
+    other users' choices at the steps where users differ.
+    """
+    init = ROOT / "adapters" / root.name / "C3" / persona / skill / "seed0"
+    rows, n_pairs = [], 0
+    for m, i, c, rej in contrast_steps(root, persona, skill):
+        rows += [_pair(m, i, c, r) for r in rej] or [_pair(m, i, c, c)]
+        n_pairs += len(rej)
+    print(f"A2b {persona}/{skill}: {len(rows)} rows, {n_pairs} with a rejected action")
+    return run_train(rows, out, init=init, epochs=2, lr=2e-5, dropout=0.0,
+                     extra=["--algorithm", "orpo", "--beta", "1.0"])
 
 
 def a1(root, persona, skill, out):
@@ -211,7 +241,7 @@ def a1(root, persona, skill, out):
     return run_train(rows, out, init=init, epochs=1, lr=3e-5)
 
 
-APPROACHES = {"A1": a1, "A2": a2, "A3": a3, "A4": a4, "A5": a5}
+APPROACHES = {"A1": a1, "A2": a2, "A2b": a2b, "A3": a3, "A4": a4, "A5": a5}
 
 
 def main():

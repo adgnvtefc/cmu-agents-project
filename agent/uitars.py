@@ -5,8 +5,20 @@ on the screenshot; with our 1288x812 viewport (multiple of 28), Qwen2.5-VL's sma
 identity, so screenshot pixels == model pixels.
 """
 
+import datetime
 import json
+import os
 import re
+
+# PROMPT_DATE=1 adds the environment's "today" to every prompt (training and evaluation alike), so
+# relative days ("Tuesday afternoon") can be resolved. Off by default to keep earlier runs reproducible.
+PROMPT_DATE = os.environ.get("PROMPT_DATE", "0") == "1"
+
+
+def date_line() -> str:
+    from apps.personas import TODAY
+    d = datetime.date.fromisoformat(TODAY)
+    return f"Today is {d.strftime('%A')}, {d.strftime('%B')} {d.day}, {d.year} ({TODAY})."
 
 COMPUTER_USE_PROMPT = r"""You are a GUI agent. You are given a task and your action history, with screenshots. You need to perform the next action to complete the task.
 
@@ -133,6 +145,8 @@ def build_messages(instruction: str, screenshots: list, history: list[str], n_im
     system = COMPUTER_USE_PROMPT.format(instruction=instruction)
     if context:
         system = system.replace("## User Instruction", context.strip() + "\n\n## User Instruction")
+    if PROMPT_DATE:
+        system = system.replace("## User Instruction", date_line() + "\n\n## User Instruction")
     messages = [{"role": "user", "content": [{"type": "text", "text": system}]}]
     images = []
     for i in range(k + 1):
