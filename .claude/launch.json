@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "workspace",
+      "url": "http://127.0.0.1:8917",
+      "port": 8917
+    }
+  ]
+}

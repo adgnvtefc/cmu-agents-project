@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+data/raw/**/trace.zip
+models/
+adapters/
+data/
+results/
+skills/
+.claude/scheduled_tasks.lock

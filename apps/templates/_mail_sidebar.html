@@ -1,0 +1,10 @@
+<aside class="sidebar">
+  <a class="btn primary big" href="/mail/compose" data-testid="compose">✎ Compose</a>
+  <ul class="nav">
+    {% for f in S.mail.folders %}
+    <li><a href="/mail?folder={{ f | urlencode }}" class="{{ 'active' if folder == f }}" data-testid="folder-{{ f }}">
+      <span>{{ f }}</span>{% if counts[f] %}<span class="count">{{ counts[f] }}</span>{% endif %}
+    </a></li>
+    {% endfor %}
+  </ul>
+</aside>

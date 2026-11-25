@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Drive{% endblock %}
+{% block body %}
+{% include "_drive_tree.html" %}
+<main class="main">
+  <div class="crumbs">
+    {% for name, path in crumbs %}
+    <a href="/drive?folder={{ path | urlencode }}" data-testid="crumb-{{ path }}">{{ name }}</a>{% if not loop.last %} › {% endif %}
+    {% endfor %}
+  </div>
+  {% if new_folder %}
+  <form class="inline-form" method="post" action="/drive/folder">
+    <input type="hidden" name="parent" value="{{ folder }}">
+    <input type="text" name="name" placeholder="New folder name" data-testid="new-folder-name" autocomplete="off" autofocus>
+    <button class="btn primary" data-testid="new-folder-create">Create</button>
+    <a class="btn ghost" href="/drive?folder={{ folder | urlencode }}" data-testid="new-folder-cancel">Cancel</a>
+  </form>
+  {% endif %}
+  <table class="files">
+    <thead><tr><th>Name</th><th>Modified</th></tr></thead>
+    <tbody>
+    {% for sf in subfolders %}
+      <tr><td><a href="/drive?folder={{ sf | urlencode }}" data-testid="folder-{{ sf }}">📁 {{ sf.rsplit('/', 1)[1] }}</a></td><td>—</td></tr>
+    {% endfor %}
+    {% for f in files %}
+      <tr><td><a href="/drive/f/{{ f.id }}" data-testid="file-{{ f.id }}">📄 {{ f.name }}{{ ' ★' if f.starred }}</a></td><td>{{ f.modified }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if not subfolders and not files %}<p class="empty">This folder is empty.</p>{% endif %}
+</main>
+{% endblock %}

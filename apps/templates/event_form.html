@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Event{% endblock %}
+{% block body %}
+<aside class="sidebar">
+  <a class="btn ghost" href="/calendar" data-testid="back">← Back to calendar</a>
+</aside>
+<main class="main">
+  <h1>{{ 'Edit event' if ev.id else 'New event' }}</h1>
+  <form class="form event" method="post" action="{{ action }}">
+    <label>Title <input type="text" name="title" value="{{ ev.title }}" data-testid="ev-title" autocomplete="off"></label>
+    <div class="row">
+      <label>Date <input type="text" name="date" value="{{ ev.date }}" placeholder="YYYY-MM-DD" data-testid="ev-date" autocomplete="off"></label>
+      <label>Start time <input type="text" name="start" value="{{ ev.start }}" placeholder="HH:MM (24h)" data-testid="ev-start" autocomplete="off"></label>
+    </div>
+    <fieldset>
+      <legend>Duration</legend>
+      {% for m in durations %}
+      <label class="chip-radio"><input type="radio" name="duration" value="{{ m }}" {{ 'checked' if ev.duration == m }} data-testid="ev-dur-{{ m }}"><span>{{ m }} min</span></label>
+      {% endfor %}
+    </fieldset>
+    <label>Guests <input type="text" name="guests" value="{{ ev.attendees | join(', ') }}" placeholder="Names or email addresses, separated by commas" data-testid="ev-guests" autocomplete="off"></label>
+    <div class="row">
+      <label>Location <input type="text" name="location" value="{{ ev.location }}" placeholder="Room or address" data-testid="ev-location" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" name="video" {{ 'checked' if ev.video }} data-testid="ev-video"> Add video call</label>
+    </div>
+    <fieldset>
+      <legend>Reminder</legend>
+      {% for r in reminders %}
+      <label class="chip-radio"><input type="radio" name="reminder" value="{{ r }}" {{ 'checked' if ev.reminder == r }} data-testid="ev-rem-{{ r }}"><span>{{ 'None' if r == 0 else r ~ ' min before' }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <label>Description <textarea name="description" rows="2" data-testid="ev-desc">{{ ev.description }}</textarea></label>
+    <div class="actions">
+      <button class="btn primary" type="submit" data-testid="ev-save">Save</button>
+      <a class="btn ghost" href="/calendar" data-testid="ev-cancel">Cancel</a>
+    </div>
+  </form>
+</main>
+{% endblock %}

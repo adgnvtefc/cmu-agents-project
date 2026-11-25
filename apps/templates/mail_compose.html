@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Compose{% endblock %}
+{% block body %}
+{% include "_mail_sidebar.html" %}
+<main class="main">
+  <h1>New message</h1>
+  <form class="form compose" method="post" action="/mail/send">
+    <label>To <input type="text" name="to" value="{{ draft.to }}" placeholder="Names or email addresses, separated by commas" data-testid="compose-to" autocomplete="off"></label>
+    <label>Cc <input type="text" name="cc" value="{{ draft.cc }}" data-testid="compose-cc" autocomplete="off"></label>
+    <label>Bcc <input type="text" name="bcc" value="{{ draft.bcc }}" data-testid="compose-bcc" autocomplete="off"></label>
+    <label>Subject <input type="text" name="subject" value="{{ draft.subject }}" data-testid="compose-subject" autocomplete="off"></label>
+    <label class="tall">Message <textarea name="body" rows="11" data-testid="compose-body">{{ draft.body }}</textarea></label>
+    <div class="actions">
+      <button class="btn primary" type="submit" data-testid="send">Send</button>
+      <a class="btn ghost" href="/mail" data-testid="discard">Discard</a>
+    </div>
+  </form>
+</main>
+{% endblock %}

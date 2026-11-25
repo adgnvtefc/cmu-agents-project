@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ ev.title }}{% endblock %}
+{% block body %}
+<aside class="sidebar">
+  <a class="btn ghost" href="/calendar?week={{ ev.date }}" data-testid="back">← Back to calendar</a>
+</aside>
+<main class="main">
+  <div class="toolbar">
+    <a class="btn" href="/calendar/e/{{ ev.id }}/edit" data-testid="ev-edit">Edit</a>
+    <form method="post" action="/calendar/e/{{ ev.id }}/delete"><button class="btn danger" data-testid="ev-delete">Delete</button></form>
+  </div>
+  <article class="message">
+    <h1>{{ ev.title }}</h1>
+    <dl class="props">
+      <dt>When</dt><dd>{{ ev.date | fmt_date }}, {{ ev.start }}–{{ add_minutes(ev.start, ev.duration) }} ({{ ev.duration }} min)</dd>
+      <dt>Guests</dt><dd>{{ ev.attendees | join(', ') or '—' }}</dd>
+      <dt>Location</dt><dd>{{ ev.location or '—' }}</dd>
+      <dt>Video call</dt><dd>{{ 'Yes' if ev.video else 'No' }}</dd>
+      <dt>Reminder</dt><dd>{{ (ev.reminder ~ ' min before') if ev.reminder else 'None' }}</dd>
+      <dt>Description</dt><dd>{{ ev.description or '—' }}</dd>
+    </dl>
+  </article>
+</main>
+{% endblock %}

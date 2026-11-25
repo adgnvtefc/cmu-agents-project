@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ f.name }}{% endblock %}
+{% block body %}
+{% include "_drive_tree.html" %}
+<main class="main">
+  <div class="toolbar">
+    <a class="btn ghost" href="/drive?folder={{ f.folder | urlencode }}" data-testid="back">← Back to folder</a>
+    <a class="btn" href="/drive/f/{{ f.id }}?move=1" data-testid="file-move">Move…</a>
+    <form method="post" action="/drive/f/{{ f.id }}/star"><button class="btn" data-testid="file-star">{{ '★ Starred' if f.starred else '☆ Star' }}</button></form>
+    <form method="post" action="/drive/f/{{ f.id }}/delete"><button class="btn danger" data-testid="file-delete">Delete</button></form>
+  </div>
+  <h1>📄 {{ f.name }}</h1>
+  <p class="hint">In {{ f.folder }} · modified {{ f.modified }}</p>
+  <form class="inline-form" method="post" action="/drive/f/{{ f.id }}/rename">
+    <input type="text" name="name" value="{{ f.name }}" aria-label="File name" data-testid="file-name" autocomplete="off">
+    <button class="btn" data-testid="file-rename">Rename</button>
+  </form>
+  {% if moving %}
+  <div class="movepanel">
+    <div class="label">Move "{{ f.name }}" to:</div>
+    <div class="folderbtns">
+    {% for t in tree if t.path != f.folder %}
+      <form method="post" action="/drive/f/{{ f.id }}/move">
+        <input type="hidden" name="folder" value="{{ t.path }}">
+        <button class="btn small" data-testid="moveto-{{ t.path }}">📁 {{ 'My Drive' if t.path == '/' else t.path }}</button>
+      </form>
+    {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <div class="preview" data-testid="file-preview">{{ f.content }}</div>
+</main>
+{% endblock %}

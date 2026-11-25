@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Mail{% endblock %}
+{% block body %}
+{% include "_mail_sidebar.html" %}
+<main class="main">
+  <form class="searchbar" action="/mail" method="get">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search mail" data-testid="mail-search" autocomplete="off">
+    <button class="btn" type="submit" data-testid="mail-search-btn">Search</button>
+    {% if q %}<a class="btn ghost" href="/mail" data-testid="clear-search">Clear</a>{% endif %}
+  </form>
+  <div class="listhead">
+    <h1>{{ title }}</h1>
+    <div class="chips">
+      {% set base = ('/mail?q=' ~ (q|urlencode)) if q else ('/mail?folder=' ~ (folder|urlencode)) %}
+      <a class="chip {{ 'on' if not only }}" href="{{ base }}" data-testid="filter-all">All</a>
+      <a class="chip {{ 'on' if only == 'unread' }}" href="{{ base }}&only=unread" data-testid="filter-unread">Unread</a>
+      <a class="chip {{ 'on' if only == 'starred' }}" href="{{ base }}&only=starred" data-testid="filter-starred">Starred</a>
+    </div>
+  </div>
+  {% if not msgs %}<p class="empty">No messages.</p>{% endif %}
+  <ul class="maillist">
+    {% for m in msgs %}
+    <li class="{{ 'unread' if not m.read }}">
+      <a href="/mail/m/{{ m.id }}" data-testid="msg-{{ m.id }}">
+        <span class="star">{{ '★' if m.starred else '' }}</span>
+        <span class="from">{% if m.folder == 'Sent' %}To: {{ m.to | join(', ') }}{% else %}{{ m.from_name }}{% endif %}</span>
+        <span class="subj">{{ m.subject }} <span class="snippet">— {{ m.body[:70] }}</span></span>
+        {% if q %}<span class="tag">{{ m.folder }}</span>{% endif %}
+        <span class="date">{{ m.date | fmt_mail_date }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</main>
+{% endblock %}
